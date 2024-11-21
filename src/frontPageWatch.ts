@@ -128,7 +128,7 @@ export async function checkPosts (_: unknown, context: JobContext) {
 
     if (itemsToRequeue.length > 0) {
         await context.redis.zAdd(POST_QUEUE_KEY, ...itemsToRequeue);
-        console.log(`Queued ${itemsToRequeue.length} ${pluralize("post", itemsToRequeue.length)} posts for future checking.`);
+        console.log(`Queued ${itemsToRequeue.length} ${pluralize("post", itemsToRequeue.length)} for future checking.`);
     }
 }
 
@@ -148,7 +148,7 @@ async function createPost (post: Post, index: number, context: TriggerContext) {
         title: newPostTitle,
     });
 
-    console.log(`New post created for ${post.id}: ${newPost.permalink}`);
+    console.log(`New post created for ${post.id}: https://www.reddit.com/${newPost.permalink}`);
 
     await context.redis.set(redisKey, new Date().getTime().toString(), { expiration: addWeeks(new Date(), 2) });
 }
