@@ -84,13 +84,13 @@ export async function getPostsFromAll (_: unknown, context: JobContext) {
     if (existingRecordsToRemove.length > 0) {
         await context.redis.zRem(POSTS_IN_ALL_KEY, existingRecordsToRemove);
         await context.redis.zRem(POST_QUEUE_KEY, existingRecordsToRemove);
-        console.log(`Removed records for ${existingRecordsToRemove.length} ${pluralize("post", existingRecordsToRemove.length)} that are no longer in /r/all`);
+        console.log(`Removed records for ${existingRecordsToRemove.length} ${pluralize("post", existingRecordsToRemove.length)} that ${pluralize("is", existingRecordsToRemove.length)} no longer in /r/all`);
     }
 
     const postsToAddToQueue = postsInAll.filter(post => !existingRecords.some(item => item.member === post.post.id));
     if (postsToAddToQueue.length > 0) {
         await context.redis.zAdd(POST_QUEUE_KEY, ...postsToAddToQueue.map(post => ({ member: post.post.id, score: new Date().getTime() })));
-        console.log(`Added ${postsToAddToQueue.length} ${pluralize("post", postsToAddToQueue.length)} to queue that are newly in /r/all`);
+        console.log(`Added ${postsToAddToQueue.length} ${pluralize("post", postsToAddToQueue.length)} to queue that ${pluralize("is", postsToAddToQueue.length)} newly in /r/all`);
     }
 
     await context.redis.zAdd(POSTS_IN_ALL_KEY, ...postsInAll.map(item => ({ member: item.post.id, score: item.index })));
@@ -116,14 +116,15 @@ export async function checkPosts (_: unknown, context: JobContext) {
         }
 
         const score = await context.redis.zScore(POSTS_IN_ALL_KEY, item.member);
-        if (!score) {
-            await context.redis.zRem(POST_QUEUE_KEY, [item.member]);
+        if (score) {
+            console.log(`Post ${item.member} is removed but was still in /r/all.`);
+            await createPost(post, score, context);
+        } else {
             console.log(`Post ${item.member} is removed, but isn't still in /r/all.`);
             continue;
         }
 
-        console.log(`Post ${item.member} is removed but was still in /r/all.`);
-        await createPost(post, score, context);
+        await context.redis.zRem(POST_QUEUE_KEY, [item.member]);
     }
 
     if (itemsToRequeue.length > 0) {
