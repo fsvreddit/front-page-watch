@@ -1,14 +1,29 @@
-// Visit developers.reddit.com/docs to learn Devvit!
+import { Devvit } from "@devvit/public-api";
+import { appSettings } from "./settings.js";
+import { handleInstallEvents } from "./installEvents.js";
+import { CHECK_POSTS_JOB, GET_ALL_JOB } from "./constants.js";
+import { checkPosts, getPostsFromAll } from "./frontPageWatch.js";
 
-import { Devvit } from '@devvit/public-api';
+Devvit.addSettings(appSettings);
 
-Devvit.addMenuItem({
-  location: 'post',
-  label: 'Hello World',
-  onPress: (event, context) => {
-    console.log(`Pressed ${event.targetId}`);
-    context.ui.showToast('Hello world!');
-  },
+Devvit.addTrigger({
+    events: ["AppInstall", "AppUpgrade"],
+    onEvent: handleInstallEvents,
+});
+
+Devvit.addSchedulerJob({
+    name: GET_ALL_JOB,
+    onRun: getPostsFromAll,
+});
+
+Devvit.addSchedulerJob({
+    name: CHECK_POSTS_JOB,
+    onRun: checkPosts,
+});
+
+Devvit.configure({
+    redditAPI: true,
+    redis: true,
 });
 
 export default Devvit;
