@@ -1,7 +1,8 @@
-import { JobContext, Post, TriggerContext, ZMember } from "@devvit/public-api";
+import { JobContext, Post, SubredditInfo, TriggerContext, ZMember } from "@devvit/public-api";
 import { AppSetting } from "./settings.js";
 import pluralize from "pluralize";
 import { addMinutes, addWeeks } from "date-fns";
+import { uniq } from "lodash";
 
 const POSTS_IN_ALL_KEY = "postsInAll";
 const POST_QUEUE_KEY = "postQueueKey";
@@ -30,6 +31,26 @@ async function getPositions (context: JobContext) {
     return { minPosition, maxPosition };
 }
 
+async function isSubredditNSFW (subredditName: string, context: JobContext) {
+    const redisKey = `subNSFW:${subredditName}`;
+    const isNSFW = await context.redis.get(redisKey);
+    if (isNSFW) {
+        return JSON.parse(isNSFW) as boolean;
+    }
+
+    let subredditInfo: SubredditInfo | undefined;
+    try {
+        subredditInfo = await context.reddit.getSubredditInfoByName(subredditName);
+    } catch {
+        //
+    }
+
+    const subNSFW = subredditInfo?.isNsfw ?? true;
+    console.log(`r/${subredditName} NSFW: ${subNSFW}`);
+    await context.redis.set(redisKey, JSON.stringify(subNSFW), { expiration: addWeeks(new Date(), 1) });
+    return subNSFW;
+}
+
 export async function getPostsFromAll (_: unknown, context: JobContext) {
     const { minPosition, maxPosition } = await getPositions(context);
 
@@ -39,10 +60,16 @@ export async function getPostsFromAll (_: unknown, context: JobContext) {
     }).all();
 
     const postsInAll: OrderedPost[] = [];
+
+    const subredditNSFW: Record<string, boolean> = {};
+    for (const subredditName of uniq(postsInAllResult.map(post => post.subredditName))) {
+        subredditNSFW[subredditName] = await isSubredditNSFW(subredditName, context);
+    }
+
     let index = 1;
 
     for (const post of postsInAllResult) {
-        if (!post.nsfw && index >= minPosition) {
+        if (!post.nsfw && !subredditNSFW[post.subredditName] && index >= minPosition) {
             postsInAll.push({ post, index });
         }
         index++;
@@ -63,11 +90,11 @@ export async function getPostsFromAll (_: unknown, context: JobContext) {
     const postsToAddToQueue = postsInAll.filter(post => !existingRecords.some(item => item.member === post.post.id));
     if (postsToAddToQueue.length > 0) {
         await context.redis.zAdd(POST_QUEUE_KEY, ...postsToAddToQueue.map(post => ({ member: post.post.id, score: new Date().getTime() })));
-        console.log(`Added ${postsToAddToQueue.length} ${pluralize("post", postsToAddToQueue.length)} posts to queue that are newly in /r/all`);
+        console.log(`Added ${postsToAddToQueue.length} ${pluralize("post", postsToAddToQueue.length)} to queue that are newly in /r/all`);
     }
 
     await context.redis.zAdd(POSTS_IN_ALL_KEY, ...postsInAll.map(item => ({ member: item.post.id, score: item.index })));
-    console.log(`Stored ${postsInAll.length} ${pluralize("post", postsInAll.length)} posts in main redis key`);
+    console.log(`Stored ${postsInAll.length} ${pluralize("post", postsInAll.length)} in main redis key`);
 }
 
 export async function checkPosts (_: unknown, context: JobContext) {
@@ -78,6 +105,7 @@ export async function checkPosts (_: unknown, context: JobContext) {
     }
 
     const postsToCheck = await context.redis.zRange(POST_QUEUE_KEY, 0, itemsToCheck - 1, { by: "rank" });
+    console.log(`Checking ${postsToCheck.length} ${pluralize("post", postsToCheck.length)}`);
 
     const itemsToRequeue: ZMember[] = [];
     for (const item of postsToCheck) {
@@ -94,12 +122,13 @@ export async function checkPosts (_: unknown, context: JobContext) {
             continue;
         }
 
+        console.log(`Post ${item.member} is removed but was still in /r/all.`);
         await createPost(post, score, context);
     }
 
     if (itemsToRequeue.length > 0) {
         await context.redis.zAdd(POST_QUEUE_KEY, ...itemsToRequeue);
-        console.log(`Queued ${itemsToRequeue} ${pluralize("post", itemsToRequeue.length)} posts for future checking.`);
+        console.log(`Queued ${itemsToRequeue.length} ${pluralize("post", itemsToRequeue.length)} posts for future checking.`);
     }
 }
 
@@ -109,13 +138,13 @@ async function createPost (post: Post, index: number, context: TriggerContext) {
     if (alreadyDone) {
         return;
     }
-
+    console.log(post.permalink);
     const subredditName = context.subredditName ?? (await context.reddit.getCurrentSubreddit()).name;
 
     const newPostTitle = `[#${index}|+${post.score}|${post.numberOfComments}] ${post.title} [r/${post.subredditName}]`;
     const newPost = await context.reddit.submitPost({
         subredditName,
-        url: post.permalink,
+        url: `https://www.reddit.com/${post.permalink}`,
         title: newPostTitle,
     });
 
