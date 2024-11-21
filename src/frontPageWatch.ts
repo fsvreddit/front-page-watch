@@ -31,7 +31,7 @@ async function getPositions (context: JobContext) {
 }
 
 export async function getPostsFromAll (_: unknown, context: JobContext) {
-    const { maxPosition } = await getPositions(context);
+    const { minPosition, maxPosition } = await getPositions(context);
 
     const postsInAllResult = await context.reddit.getHotPosts({
         subredditName: "all",
@@ -42,7 +42,7 @@ export async function getPostsFromAll (_: unknown, context: JobContext) {
     let index = 1;
 
     for (const post of postsInAllResult) {
-        if (!post.nsfw) {
+        if (!post.nsfw && index >= minPosition) {
             postsInAll.push({ post, index });
         }
         index++;
