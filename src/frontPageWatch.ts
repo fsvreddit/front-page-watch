@@ -50,14 +50,14 @@ export async function getPostsFromAll (_: unknown, context: JobContext) {
 
     const existingRecords = await context.redis.zRange(POSTS_IN_ALL_KEY, 0, -1);
 
-    const postsToRemove = existingRecords
+    const existingRecordsToRemove = existingRecords
         .filter(item => !postsInAll.some(post => post.post.id === item.member))
         .map(item => item.member);
 
-    if (postsToRemove.length > 0) {
-        await context.redis.zRem(POSTS_IN_ALL_KEY, postsToRemove);
-        await context.redis.zRem(POST_QUEUE_KEY, postsToRemove);
-        console.log(`Removed records for ${postsToRemove.length} ${pluralize("post", postsToRemove.length)} that are no longer in /r/all`);
+    if (existingRecordsToRemove.length > 0) {
+        await context.redis.zRem(POSTS_IN_ALL_KEY, existingRecordsToRemove);
+        await context.redis.zRem(POST_QUEUE_KEY, existingRecordsToRemove);
+        console.log(`Removed records for ${existingRecordsToRemove.length} ${pluralize("post", existingRecordsToRemove.length)} that are no longer in /r/all`);
     }
 
     const postsToAddToQueue = postsInAll.filter(post => !existingRecords.some(item => item.member === post.post.id));
