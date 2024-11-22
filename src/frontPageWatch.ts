@@ -147,7 +147,18 @@ async function createPost (post: Post, index: number, context: TriggerContext) {
     console.log(post.permalink);
     const subredditName = context.subredditName ?? (await context.reddit.getCurrentSubreddit()).name;
 
-    const newPostTitle = `[#${index}|+${post.score}|${post.numberOfComments}] ${post.title} [r/${post.subredditName}]`;
+    const prefix = `[#${index}|+${post.score}|${post.numberOfComments}] `;
+    const suffix = ` [r/${post.subredditName}]`;
+
+    let newPostTitle: string;
+    const totalLength = prefix.length + suffix.length + post.title.length;
+
+    if (totalLength <= 300) {
+        newPostTitle = prefix + post.title + suffix;
+    } else {
+        newPostTitle = prefix + post.title.slice(0, totalLength - 303) + "..." + suffix;
+    }
+
     const newPost = await context.reddit.submitPost({
         subredditName,
         url: `https://www.reddit.com${post.permalink}`,
