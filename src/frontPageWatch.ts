@@ -150,11 +150,11 @@ async function createPost (post: Post, index: number, context: TriggerContext) {
     const newPostTitle = `[#${index}|+${post.score}|${post.numberOfComments}] ${post.title} [r/${post.subredditName}]`;
     const newPost = await context.reddit.submitPost({
         subredditName,
-        url: `https://www.reddit.com/${post.permalink}`,
+        url: `https://www.reddit.com${post.permalink}`,
         title: newPostTitle,
     });
 
-    console.log(`New post created for ${post.id}: https://www.reddit.com/${newPost.permalink}`);
+    console.log(`New post created for ${post.id}: https://www.reddit.com${newPost.permalink}`);
 
     await context.redis.set(redisKey, new Date().getTime().toString(), { expiration: addWeeks(new Date(), 2) });
 }
