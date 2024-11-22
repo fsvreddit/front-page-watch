@@ -121,7 +121,6 @@ export async function checkPosts (_: unknown, context: JobContext) {
             await createPost(post, score, context);
         } else {
             console.log(`Post ${item.member} is removed, but isn't still in /r/all.`);
-            continue;
         }
 
         await context.redis.zRem(POST_QUEUE_KEY, [item.member]);
