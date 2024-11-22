@@ -1,8 +1,9 @@
-import { JobContext, Post, SubredditInfo, TriggerContext, ZMember } from "@devvit/public-api";
+import { JobContext, JSONObject, Post, ScheduledJobEvent, SubredditInfo, TriggerContext, ZMember } from "@devvit/public-api";
 import { AppSetting } from "./settings.js";
 import pluralize from "pluralize";
-import { addMinutes, addWeeks } from "date-fns";
+import { addMinutes, addSeconds, addWeeks } from "date-fns";
 import { uniq } from "lodash";
+import { SUB_NSFW_CHECK } from "./constants.js";
 
 const POSTS_IN_ALL_KEY = "postsInAll";
 const POST_QUEUE_KEY = "postQueueKey";
@@ -105,6 +106,11 @@ export async function checkPosts (_: unknown, context: JobContext) {
     }
 
     const postsToCheck = await context.redis.zRange(POST_QUEUE_KEY, 0, itemsToCheck - 1, { by: "rank" });
+    if (postsToCheck.length === 0) {
+        console.log("No posts to check yet.");
+        return;
+    }
+
     console.log(`Checking ${postsToCheck.length} ${pluralize("post", postsToCheck.length)}`);
 
     const itemsToRequeue: ZMember[] = [];
@@ -151,4 +157,37 @@ async function createPost (post: Post, index: number, context: TriggerContext) {
     console.log(`New post created for ${post.id}: https://www.reddit.com/${newPost.permalink}`);
 
     await context.redis.set(redisKey, new Date().getTime().toString(), { expiration: addWeeks(new Date(), 2) });
+}
+
+export async function subNSFWCheck (event: ScheduledJobEvent<JSONObject | undefined>, context: JobContext) {
+    let subList: string[];
+    if (event.data?.subList) {
+        subList = event.data.subList as string[];
+    } else {
+        const postsInAll = await context.reddit.getHotPosts({
+            subredditName: "all",
+            limit: 1000,
+        }).all();
+
+        subList = uniq(postsInAll.map(post => post.subredditName));
+    }
+
+    let index = 1;
+    while (subList.length > 0 && index < 50) {
+        const subredditName = subList.shift();
+        if (!subredditName) {
+            break;
+        }
+
+        await isSubredditNSFW(subredditName, context);
+        index++;
+    }
+
+    if (subList.length > 0) {
+        await context.scheduler.runJob({
+            name: SUB_NSFW_CHECK,
+            runAt: addSeconds(new Date(), 5),
+            data: { subList },
+        });
+    }
 }
