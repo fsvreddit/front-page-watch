@@ -44,14 +44,14 @@ export const appSettings: SettingsFormField[] = [
     {
         type: "number",
         name: AppSetting.MinPosition,
-        label: "Start position on /r/all to monitor. Must be lower than end position",
+        label: "Start position on feed to monitor. Must be lower than end position",
         defaultValue: 1,
         onValidate: validatePosition,
     },
     {
         type: "number",
         name: AppSetting.MaxPosition,
-        label: "End position on /r/all to monitor. Must be higher than start position",
+        label: "End position on feed to monitor. Must be higher than start position",
         defaultValue: 100,
         onValidate: validatePosition,
     },
