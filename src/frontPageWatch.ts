@@ -131,6 +131,30 @@ export async function checkPosts (_: unknown, context: JobContext) {
     }
 }
 
+export interface PostTitleInfo {
+    index: number;
+    upvotes: number;
+    commentCount: number;
+    postTitle: string;
+    subredditName: string;
+}
+
+export function getNewPostTitle (data: PostTitleInfo): string {
+    const prefix = `[#${data.index}|+${data.upvotes}|${data.commentCount}] `;
+    const suffix = ` [r/${data.subredditName}]`;
+
+    let newPostTitle: string;
+    const totalLength = prefix.length + suffix.length + data.postTitle.length;
+
+    if (totalLength <= 300) {
+        newPostTitle = prefix + data.postTitle + suffix;
+    } else {
+        newPostTitle = prefix + data.postTitle.slice(0, data.postTitle.length - (totalLength - 297)) + "..." + suffix;
+    }
+
+    return newPostTitle;
+}
+
 async function createPost (post: Post, index: number, context: TriggerContext) {
     const isNSFW = await isSubredditNSFW(post.subredditName, context);
     if (isNSFW) {
@@ -147,17 +171,13 @@ async function createPost (post: Post, index: number, context: TriggerContext) {
     console.log(post.permalink);
     const subredditName = context.subredditName ?? (await context.reddit.getCurrentSubreddit()).name;
 
-    const prefix = `[#${index}|+${post.score}|${post.numberOfComments}] `;
-    const suffix = ` [r/${post.subredditName}]`;
-
-    let newPostTitle: string;
-    const totalLength = prefix.length + suffix.length + post.title.length;
-
-    if (totalLength <= 300) {
-        newPostTitle = prefix + post.title + suffix;
-    } else {
-        newPostTitle = prefix + post.title.slice(0, totalLength - 303) + "..." + suffix;
-    }
+    const newPostTitle = getNewPostTitle({
+        index,
+        upvotes: post.score,
+        commentCount: post.numberOfComments,
+        postTitle: post.title,
+        subredditName: post.subredditName,
+    });
 
     const newPost = await context.reddit.submitPost({
         subredditName,
