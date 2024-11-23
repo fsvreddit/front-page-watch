@@ -7,10 +7,8 @@
   "dependencies": {
     "@devvit/protos": "0.11.3",
     "@devvit/public-api": "0.11.3",
-    "@types/lodash": "^4.17.13",
     "@types/pluralize": "^0.0.33",
     "date-fns": "^4.1.0",
-    "lodash": "^4.17.21",
     "pluralize": "^8.0.0"
   },
   "devDependencies": {

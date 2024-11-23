@@ -1,18 +1,13 @@
 import { Devvit } from "@devvit/public-api";
 import { appSettings } from "./settings.js";
-import { handleInstallEvent, handleUpgradeEvents } from "./installEvents.js";
-import { CHECK_POSTS_JOB, GET_ALL_JOB, SUB_NSFW_CHECK } from "./constants.js";
-import { checkPosts, getPostsFromAll, subNSFWCheck } from "./frontPageWatch.js";
+import { handleUpgradeEvents } from "./installEvents.js";
+import { CHECK_POSTS_JOB, GET_ALL_JOB } from "./constants.js";
+import { checkPosts, getPostsFromAll } from "./frontPageWatch.js";
 
 Devvit.addSettings(appSettings);
 
 Devvit.addTrigger({
-    event: "AppInstall",
-    onEvent: handleInstallEvent,
-});
-
-Devvit.addTrigger({
-    event: "AppUpgrade",
+    events: ["AppInstall", "AppUpgrade"],
     onEvent: handleUpgradeEvents,
 });
 
@@ -24,11 +19,6 @@ Devvit.addSchedulerJob({
 Devvit.addSchedulerJob({
     name: CHECK_POSTS_JOB,
     onRun: checkPosts,
-});
-
-Devvit.addSchedulerJob({
-    name: SUB_NSFW_CHECK,
-    onRun: subNSFWCheck,
 });
 
 Devvit.configure({

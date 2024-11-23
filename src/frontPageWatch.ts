@@ -1,9 +1,7 @@
-import { JobContext, JSONObject, Post, ScheduledJobEvent, SubredditInfo, TriggerContext, ZMember } from "@devvit/public-api";
+import { JobContext, Post, SubredditInfo, TriggerContext, ZMember } from "@devvit/public-api";
 import { AppSetting } from "./settings.js";
 import pluralize from "pluralize";
-import { addMinutes, addSeconds, addWeeks } from "date-fns";
-import { uniq } from "lodash";
-import { SUB_NSFW_CHECK } from "./constants.js";
+import { addMinutes, addWeeks } from "date-fns";
 
 const POSTS_IN_ALL_KEY = "postsInAll";
 const POST_QUEUE_KEY = "postQueueKey";
@@ -62,15 +60,10 @@ export async function getPostsFromAll (_: unknown, context: JobContext) {
 
     const postsInAll: OrderedPost[] = [];
 
-    const subredditNSFW: Record<string, boolean> = {};
-    for (const subredditName of uniq(postsInAllResult.map(post => post.subredditName))) {
-        subredditNSFW[subredditName] = await isSubredditNSFW(subredditName, context);
-    }
-
     let index = 1;
 
     for (const post of postsInAllResult) {
-        if (!post.nsfw && !subredditNSFW[post.subredditName] && index >= minPosition) {
+        if (!post.nsfw && index >= minPosition) {
             postsInAll.push({ post, index });
         }
         index++;
@@ -139,11 +132,18 @@ export async function checkPosts (_: unknown, context: JobContext) {
 }
 
 async function createPost (post: Post, index: number, context: TriggerContext) {
+    const isNSFW = await isSubredditNSFW(post.subredditName, context);
+    if (isNSFW) {
+        console.log(`Post not made because ${post.subredditName} is NSFW`);
+        return;
+    }
+
     const redisKey = `postMade:${post.id}`;
     const alreadyDone = await context.redis.get(redisKey);
     if (alreadyDone) {
         return;
     }
+
     console.log(post.permalink);
     const subredditName = context.subredditName ?? (await context.reddit.getCurrentSubreddit()).name;
 
@@ -168,37 +168,4 @@ async function createPost (post: Post, index: number, context: TriggerContext) {
     console.log(`New post created for ${post.id}: https://www.reddit.com${newPost.permalink}`);
 
     await context.redis.set(redisKey, new Date().getTime().toString(), { expiration: addWeeks(new Date(), 2) });
-}
-
-export async function subNSFWCheck (event: ScheduledJobEvent<JSONObject | undefined>, context: JobContext) {
-    let subList: string[];
-    if (event.data?.subList) {
-        subList = event.data.subList as string[];
-    } else {
-        const postsInAll = await context.reddit.getHotPosts({
-            subredditName: "all",
-            limit: 1000,
-        }).all();
-
-        subList = uniq(postsInAll.map(post => post.subredditName));
-    }
-
-    let index = 1;
-    while (subList.length > 0 && index < 50) {
-        const subredditName = subList.shift();
-        if (!subredditName) {
-            break;
-        }
-
-        await isSubredditNSFW(subredditName, context);
-        index++;
-    }
-
-    if (subList.length > 0) {
-        await context.scheduler.runJob({
-            name: SUB_NSFW_CHECK,
-            runAt: addSeconds(new Date(), 5),
-            data: { subList },
-        });
-    }
 }
