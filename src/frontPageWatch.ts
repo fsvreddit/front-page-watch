@@ -11,7 +11,7 @@ interface OrderedPost {
     index: number;
 }
 
-async function getPositions (context: JobContext) {
+async function getSettings (context: JobContext) {
     const settings = await context.settings.getAll();
 
     const minPosition = settings[AppSetting.MinPosition] as number | undefined;
@@ -19,15 +19,21 @@ async function getPositions (context: JobContext) {
 
     if (!minPosition || !maxPosition) {
         console.log("Misconfigured!");
-        return { minPosition: 1, maxPosition: 100 };
+        return { minPosition: 1, maxPosition: 100, feedToMonitor: "all" };
     }
 
     if (minPosition > maxPosition) {
         console.log("Misconfigured!");
-        return { minPosition: 1, maxPosition: 100 };
+        return { minPosition: 1, maxPosition: 100, feedToMonitor: "all" };
     }
 
-    return { minPosition, maxPosition };
+    const feedToMonitor = settings[AppSetting.FeedToMonitor] as string | undefined;
+    if (!feedToMonitor) {
+        console.log("No feed!");
+        return { minPosition: 1, maxPosition: 100, feedToMonitor: "all" };
+    }
+
+    return { minPosition, maxPosition, feedToMonitor };
 }
 
 async function isSubredditNSFW (subredditName: string, context: JobContext) {
@@ -51,10 +57,10 @@ async function isSubredditNSFW (subredditName: string, context: JobContext) {
 }
 
 export async function getPostsFromAll (_: unknown, context: JobContext) {
-    const { minPosition, maxPosition } = await getPositions(context);
+    const { minPosition, maxPosition, feedToMonitor } = await getSettings(context);
 
     const postsInAllResult = await context.reddit.getHotPosts({
-        subredditName: "all",
+        subredditName: feedToMonitor,
         limit: maxPosition,
     }).all();
 
@@ -92,7 +98,7 @@ export async function getPostsFromAll (_: unknown, context: JobContext) {
 }
 
 export async function checkPosts (_: unknown, context: JobContext) {
-    const { minPosition, maxPosition } = await getPositions(context);
+    const { minPosition, maxPosition } = await getSettings(context);
     let itemsToCheck = Math.round((maxPosition - minPosition) / 18);
     if (itemsToCheck < 10) {
         itemsToCheck = 10;

@@ -1,8 +1,30 @@
-import { SettingsFormField, SettingsFormFieldValidatorEvent } from "@devvit/public-api";
+import { SettingsFormField, SettingsFormFieldValidatorEvent, TriggerContext } from "@devvit/public-api";
+import { GET_ALL_JOB } from "./constants.js";
 
 export enum AppSetting {
+    FeedToMonitor = "feedToMonitor",
     MinPosition = "minPosition",
     MaxPosition = "maxPosition",
+}
+
+async function validateFieldAndRequeue (event: SettingsFormFieldValidatorEvent<string>, context: TriggerContext) {
+    if (!event.value) {
+        return "You must enter a feed to monitor";
+    }
+
+    try {
+        await context.reddit.getHotPosts({
+            subredditName: event.value,
+            limit: 100,
+        }).all();
+    } catch {
+        return `Cannot retrieve posts from r/${event.value}`;
+    }
+
+    await context.scheduler.runJob({
+        name: GET_ALL_JOB,
+        runAt: new Date(),
+    });
 }
 
 function validatePosition ({ value }: SettingsFormFieldValidatorEvent<number>) {
@@ -12,6 +34,13 @@ function validatePosition ({ value }: SettingsFormFieldValidatorEvent<number>) {
 }
 
 export const appSettings: SettingsFormField[] = [
+    {
+        type: "string",
+        name: AppSetting.FeedToMonitor,
+        label: "Feed to monitor",
+        defaultValue: "all",
+        onValidate: validateFieldAndRequeue,
+    },
     {
         type: "number",
         name: AppSetting.MinPosition,
