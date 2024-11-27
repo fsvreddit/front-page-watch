@@ -1,7 +1,8 @@
 import { JobContext, Post, SubredditInfo, TriggerContext, ZMember } from "@devvit/public-api";
 import { AppSetting } from "./settings.js";
 import pluralize from "pluralize";
-import { addMinutes, addWeeks } from "date-fns";
+import { addDays, addMinutes, addWeeks } from "date-fns";
+import { setCleanupForPost } from "./cleanup.js";
 
 const POSTS_IN_ALL_KEY = "postsInAll";
 const POST_QUEUE_KEY = "postQueueKey";
@@ -190,6 +191,8 @@ async function createPost (post: Post, index: number, context: TriggerContext) {
         url: `https://www.reddit.com${post.permalink}`,
         title: newPostTitle,
     });
+
+    await setCleanupForPost(newPost.id, post.id, context, addDays(new Date(), 1));
 
     console.log(`New post created for ${post.id}: https://www.reddit.com${newPost.permalink}`);
 

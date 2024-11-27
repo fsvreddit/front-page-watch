@@ -12,6 +12,7 @@
     "@devvit/protos": "0.11.3",
     "@devvit/public-api": "0.11.3",
     "@types/pluralize": "^0.0.33",
+    "cron-parser": "^4.9.0",
     "date-fns": "^4.1.0",
     "pluralize": "^8.0.0"
   },
