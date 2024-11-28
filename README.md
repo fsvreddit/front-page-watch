@@ -8,7 +8,7 @@ The code for this app is open source, and can be found on GitHub [here](https://
 
 ## Changes
 
-### v1.1.3
+### v1.1.4
 
 * If a linked post is deleted by the OP, or the OP deletes their account, the post on r/undelete or r/longtail will be deleted within 28 days. This is required by Reddit's Content Deletion Policy.
 * Improved logging output (background only)

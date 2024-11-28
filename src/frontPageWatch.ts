@@ -192,7 +192,7 @@ async function createPost (post: Post, index: number, context: TriggerContext) {
 
     await setCleanupForPost(newPost.id, post.id, context, addDays(new Date(), 1));
 
-    console.log(`Create: New post for ${post.id}: https://www.reddit.com${newPost.permalink}`);
+    console.log(`Create: New post for ${post.id}: https://redd.it/${newPost.id.slice(3)}`);
 
     await context.redis.set(redisKey, new Date().getTime().toString(), { expiration: addWeeks(new Date(), 2) });
 }
