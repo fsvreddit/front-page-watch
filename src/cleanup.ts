@@ -22,13 +22,16 @@ export async function handleCleanupJob (_: unknown, context: JobContext) {
                 const localPost = await context.reddit.getPostById(localPostId);
                 if (localPost.authorName !== "[deleted]") {
                     await localPost.delete();
-                    console.log(`Post ${localPostId} has been deleted because the remote post has been deleted`);
+                    console.log(`Cleanup: Post ${localPostId} has been deleted because the remote post has been deleted`);
                 }
                 await context.redis.zRem(CLEANUP_KEY, [`${localPostId}:${remotePostId}`]);
             } else {
                 await setCleanupForPost(localPostId, remotePostId, context);
             }
         }
+        console.log(`Cleanup: ${itemsToCheck.length} ${pluralize("post", itemsToCheck.length)} checked.`);
+    } else {
+        console.log("Cleanup: Nothing to do.");
     }
 
     await scheduleAdhocCleanup(context);

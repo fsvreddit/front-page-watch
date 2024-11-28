@@ -29,4 +29,6 @@ export async function handleUpgradeEvents (_: AppInstall | AppUpgrade, context: 
 
     await oneOffCleanupSchedule(context);
     await scheduleAdhocCleanup(context);
+
+    console.log("Install: Jobs rescheduled.");
 }

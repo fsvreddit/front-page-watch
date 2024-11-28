@@ -34,7 +34,9 @@ async function getSettings (context: JobContext) {
         return { minPosition: 1, maxPosition: 100, feedToMonitor: "all" };
     }
 
-    return { minPosition, maxPosition, feedToMonitor };
+    const verboseLogging = settings[AppSetting.VerboseLogging] as boolean | undefined ?? false;
+
+    return { minPosition, maxPosition, feedToMonitor, verboseLogging };
 }
 
 async function isSubredditNSFW (subredditName: string, context: JobContext) {
@@ -52,13 +54,12 @@ async function isSubredditNSFW (subredditName: string, context: JobContext) {
     }
 
     const subNSFW = subredditInfo?.isNsfw ?? true;
-    console.log(`r/${subredditName} NSFW: ${subNSFW}`);
     await context.redis.set(redisKey, JSON.stringify(subNSFW), { expiration: addWeeks(new Date(), 1) });
     return subNSFW;
 }
 
 export async function getPostsFromAll (_: unknown, context: JobContext) {
-    const { minPosition, maxPosition, feedToMonitor } = await getSettings(context);
+    const { minPosition, maxPosition, feedToMonitor, verboseLogging } = await getSettings(context);
 
     const postsInAllResult = await context.reddit.getHotPosts({
         subredditName: feedToMonitor,
@@ -85,21 +86,22 @@ export async function getPostsFromAll (_: unknown, context: JobContext) {
     if (existingRecordsToRemove.length > 0) {
         await context.redis.zRem(POSTS_IN_ALL_KEY, existingRecordsToRemove);
         await context.redis.zRem(POST_QUEUE_KEY, existingRecordsToRemove);
-        console.log(`Removed records for ${existingRecordsToRemove.length} ${pluralize("post", existingRecordsToRemove.length)} that ${pluralize("is", existingRecordsToRemove.length)} no longer in /r/${feedToMonitor}`);
     }
 
     const postsToAddToQueue = postsInAll.filter(post => !existingRecords.some(item => item.member === post.post.id));
     if (postsToAddToQueue.length > 0) {
         await context.redis.zAdd(POST_QUEUE_KEY, ...postsToAddToQueue.map(post => ({ member: post.post.id, score: new Date().getTime() })));
-        console.log(`Added ${postsToAddToQueue.length} ${pluralize("post", postsToAddToQueue.length)} to queue that ${pluralize("is", postsToAddToQueue.length)} newly in /r/${feedToMonitor}`);
     }
 
     await context.redis.zAdd(POSTS_IN_ALL_KEY, ...postsInAll.map(item => ({ member: item.post.id, score: item.index })));
-    console.log(`Stored ${postsInAll.length} ${pluralize("post", postsInAll.length)} in main redis key`);
+
+    if (verboseLogging) {
+        console.log(`Populate: ${existingRecordsToRemove.length} queued, ${postsToAddToQueue.length} dequeued, ${postsInAll.length} recorded`);
+    }
 }
 
 export async function checkPosts (_: unknown, context: JobContext) {
-    const { minPosition, maxPosition } = await getSettings(context);
+    const { minPosition, maxPosition, verboseLogging } = await getSettings(context);
     let itemsToCheck = Math.round((maxPosition - minPosition) / 18);
     if (itemsToCheck < 10) {
         itemsToCheck = 10;
@@ -107,11 +109,9 @@ export async function checkPosts (_: unknown, context: JobContext) {
 
     const postsToCheck = await context.redis.zRange(POST_QUEUE_KEY, 0, itemsToCheck - 1, { by: "rank" });
     if (postsToCheck.length === 0) {
-        console.log("No posts to check yet.");
+        console.log("Check: No posts to check yet.");
         return;
     }
-
-    console.log(`Checking ${postsToCheck.length} ${pluralize("post", postsToCheck.length)}`);
 
     const itemsToRequeue: ZMember[] = [];
     for (const item of postsToCheck) {
@@ -123,10 +123,7 @@ export async function checkPosts (_: unknown, context: JobContext) {
 
         const score = await context.redis.zScore(POSTS_IN_ALL_KEY, item.member);
         if (score) {
-            console.log(`Post ${item.member} is removed but was still in feed.`);
             await createPost(post, score, context);
-        } else {
-            console.log(`Post ${item.member} is removed, but isn't still in feed.`);
         }
 
         await context.redis.zRem(POST_QUEUE_KEY, [item.member]);
@@ -134,7 +131,9 @@ export async function checkPosts (_: unknown, context: JobContext) {
 
     if (itemsToRequeue.length > 0) {
         await context.redis.zAdd(POST_QUEUE_KEY, ...itemsToRequeue);
-        console.log(`Queued ${itemsToRequeue.length} ${pluralize("post", itemsToRequeue.length)} for future checking.`);
+        if (verboseLogging) {
+            console.log(`Check: Queued ${itemsToRequeue.length} ${pluralize("post", itemsToRequeue.length)} out of ${postsToCheck.length} for future checking.`);
+        }
     }
 }
 
@@ -165,7 +164,7 @@ export function getNewPostTitle (data: PostTitleInfo): string {
 async function createPost (post: Post, index: number, context: TriggerContext) {
     const isNSFW = await isSubredditNSFW(post.subredditName, context);
     if (isNSFW) {
-        console.log(`Post not made because ${post.subredditName} is NSFW`);
+        console.log(`Create: Post for ${post.id} not made because ${post.subredditName} is NSFW`);
         return;
     }
 
@@ -175,7 +174,6 @@ async function createPost (post: Post, index: number, context: TriggerContext) {
         return;
     }
 
-    console.log(post.permalink);
     const subredditName = context.subredditName ?? (await context.reddit.getCurrentSubreddit()).name;
 
     const newPostTitle = getNewPostTitle({
@@ -194,7 +192,7 @@ async function createPost (post: Post, index: number, context: TriggerContext) {
 
     await setCleanupForPost(newPost.id, post.id, context, addDays(new Date(), 1));
 
-    console.log(`New post created for ${post.id}: https://www.reddit.com${newPost.permalink}`);
+    console.log(`Create: New post for ${post.id}: https://www.reddit.com${newPost.permalink}`);
 
     await context.redis.set(redisKey, new Date().getTime().toString(), { expiration: addWeeks(new Date(), 2) });
 }

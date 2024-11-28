@@ -5,6 +5,7 @@ export enum AppSetting {
     FeedToMonitor = "feedToMonitor",
     MinPosition = "minPosition",
     MaxPosition = "maxPosition",
+    VerboseLogging = "verboseLogging",
 }
 
 async function validateFieldAndRequeue (event: SettingsFormFieldValidatorEvent<string>, context: TriggerContext) {
@@ -54,5 +55,11 @@ export const appSettings: SettingsFormField[] = [
         label: "End position on feed to monitor. Must be higher than start position",
         defaultValue: 100,
         onValidate: validatePosition,
+    },
+    {
+        type: "boolean",
+        name: AppSetting.VerboseLogging,
+        label: "Verbose logging",
+        defaultValue: false,
     },
 ];
