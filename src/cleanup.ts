@@ -13,7 +13,7 @@ export async function setCleanupForPost (localPostId: string, remotePostId: stri
 }
 
 export async function handleCleanupJob (_: unknown, context: JobContext) {
-    const itemsToCheck = await context.redis.zRange(CLEANUP_KEY, 0, new Date().getTime());
+    const itemsToCheck = await context.redis.zRange(CLEANUP_KEY, 0, new Date().getTime(), { by: "score" });
 
     if (itemsToCheck.length > 0) {
         for (const [localPostId, remotePostId] of itemsToCheck.slice(0, 20).map(item => item.member.split(":"))) {
@@ -71,29 +71,22 @@ export function getRemotePostId (url: string): string | undefined {
     return `t3_${matches[1]}`;
 }
 
-export async function oneOffCleanupSchedule (context: TriggerContext) {
-    const redisKey = "OneOffCleanupCompleted";
+export async function oneOffCleanupReschedule (context: TriggerContext) {
+    const redisKey = "OneOffRescheduleCompleted";
     const alreadyDone = await context.redis.get(redisKey);
     if (alreadyDone) {
         return;
     }
 
-    await context.redis.del(CLEANUP_KEY);
+    const allCleanup = await context.redis.zRange(CLEANUP_KEY, 0, -1);
 
-    const subredditName = context.subredditName ?? (await context.reddit.getCurrentSubreddit()).name;
-    const allPosts = await context.reddit.getNewPosts({
-        subredditName,
-        limit: 1000,
-    }).all();
+    const randomMax = 60 * 24 * 7;
 
-    for (const post of allPosts.filter(post => post.authorName === context.appName)) {
-        const remotePostId = getRemotePostId(post.url);
-        if (remotePostId) {
-            await setCleanupForPost(post.id, remotePostId, context, addDays(post.createdAt, 5));
-        }
-    }
+    const newEntries = allCleanup.map(item => ({ member: item.member, score: addMinutes(new Date(), Math.round(Math.random() * randomMax)).getTime() }));
 
-    console.log(`Scheduled ${allPosts.length} ${pluralize("post", allPosts.length)} for one-off cleanup`);
+    await context.redis.zAdd(CLEANUP_KEY, ...newEntries);
+
+    console.log(`Scheduled ${newEntries.length} ${pluralize("post", newEntries.length)} for one-off cleanup`);
 
     await context.redis.set(redisKey, new Date().getTime().toString());
 }
