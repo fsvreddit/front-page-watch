@@ -1,8 +1,9 @@
-import { JobContext, TriggerContext } from "@devvit/public-api";
+import { JobContext, Post, TriggerContext } from "@devvit/public-api";
 import { parseExpression } from "cron-parser";
 import { addDays, addMinutes, differenceInMinutes } from "date-fns";
 import { CLEANUP_JOB, CLEANUP_JOB_CRON } from "./constants.js";
 import pluralize from "pluralize";
+import { getSettings } from "./settings.js";
 
 const CLEANUP_KEY = "cleanupLog";
 const CLEANUP_INTERVAL = 28;
@@ -17,8 +18,18 @@ export async function handleCleanupJob (_: unknown, context: JobContext) {
 
     if (itemsToCheck.length > 0) {
         for (const [localPostId, remotePostId] of itemsToCheck.slice(0, 20).map(item => item.member.split(":"))) {
-            const remotePost = await context.reddit.getPostById(remotePostId);
-            if (remotePost.authorName === "[deleted]") {
+            let remotePost: Post | undefined;
+            try {
+                remotePost = await context.reddit.getPostById(remotePostId);
+            } catch (error) {
+                const { verboseLogging } = await getSettings(context);
+                if (verboseLogging) {
+                    console.log(`Error retrieving post ${remotePostId}`);
+                    console.log(error);
+                }
+            }
+
+            if (!remotePost || remotePost.authorName === "[deleted]") {
                 const localPost = await context.reddit.getPostById(localPostId);
                 if (localPost.authorName !== "[deleted]") {
                     await localPost.delete();

@@ -1,4 +1,4 @@
-import { SettingsFormField, SettingsFormFieldValidatorEvent, TriggerContext } from "@devvit/public-api";
+import { JobContext, SettingsFormField, SettingsFormFieldValidatorEvent, TriggerContext } from "@devvit/public-api";
 import { GET_ALL_JOB } from "./constants.js";
 
 export enum AppSetting {
@@ -63,3 +63,30 @@ export const appSettings: SettingsFormField[] = [
         defaultValue: false,
     },
 ];
+
+export async function getSettings (context: JobContext) {
+    const settings = await context.settings.getAll();
+
+    const minPosition = settings[AppSetting.MinPosition] as number | undefined;
+    const maxPosition = settings[AppSetting.MaxPosition] as number | undefined;
+
+    if (!minPosition || !maxPosition) {
+        console.log("Misconfigured!");
+        return { minPosition: 1, maxPosition: 100, feedToMonitor: "all" };
+    }
+
+    if (minPosition > maxPosition) {
+        console.log("Misconfigured!");
+        return { minPosition: 1, maxPosition: 100, feedToMonitor: "all" };
+    }
+
+    const feedToMonitor = settings[AppSetting.FeedToMonitor] as string | undefined;
+    if (!feedToMonitor) {
+        console.log("No feed!");
+        return { minPosition: 1, maxPosition: 100, feedToMonitor: "all" };
+    }
+
+    const verboseLogging = settings[AppSetting.VerboseLogging] as boolean | undefined ?? false;
+
+    return { minPosition, maxPosition, feedToMonitor, verboseLogging };
+}

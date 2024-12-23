@@ -1,5 +1,5 @@
 import { JobContext, Post, SubredditInfo, TriggerContext, ZMember } from "@devvit/public-api";
-import { AppSetting } from "./settings.js";
+import { getSettings } from "./settings.js";
 import pluralize from "pluralize";
 import { addDays, addMinutes, addWeeks } from "date-fns";
 import { setCleanupForPost } from "./cleanup.js";
@@ -10,33 +10,6 @@ const POST_QUEUE_KEY = "postQueueKey";
 interface OrderedPost {
     post: Post;
     index: number;
-}
-
-async function getSettings (context: JobContext) {
-    const settings = await context.settings.getAll();
-
-    const minPosition = settings[AppSetting.MinPosition] as number | undefined;
-    const maxPosition = settings[AppSetting.MaxPosition] as number | undefined;
-
-    if (!minPosition || !maxPosition) {
-        console.log("Misconfigured!");
-        return { minPosition: 1, maxPosition: 100, feedToMonitor: "all" };
-    }
-
-    if (minPosition > maxPosition) {
-        console.log("Misconfigured!");
-        return { minPosition: 1, maxPosition: 100, feedToMonitor: "all" };
-    }
-
-    const feedToMonitor = settings[AppSetting.FeedToMonitor] as string | undefined;
-    if (!feedToMonitor) {
-        console.log("No feed!");
-        return { minPosition: 1, maxPosition: 100, feedToMonitor: "all" };
-    }
-
-    const verboseLogging = settings[AppSetting.VerboseLogging] as boolean | undefined ?? false;
-
-    return { minPosition, maxPosition, feedToMonitor, verboseLogging };
 }
 
 async function isSubredditNSFW (subredditName: string, context: JobContext) {
@@ -115,7 +88,18 @@ export async function checkPosts (_: unknown, context: JobContext) {
 
     const itemsToRequeue: ZMember[] = [];
     for (const item of postsToCheck) {
-        const post = await context.reddit.getPostById(item.member);
+        let post: Post | undefined;
+        try {
+            post = await context.reddit.getPostById(item.member);
+        } catch (error) {
+            if (verboseLogging) {
+                console.log(`Error retrieving post ${item.member}`);
+                console.log(error);
+            }
+            await context.redis.zRem(POST_QUEUE_KEY, [item.member]);
+            continue;
+        }
+
         if (post.removedByCategory !== "moderator") {
             itemsToRequeue.push({ member: post.id, score: addMinutes(new Date(), 5).getTime() });
             continue;
