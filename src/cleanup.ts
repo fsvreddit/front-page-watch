@@ -65,7 +65,7 @@ export async function scheduleAdhocCleanup (context: TriggerContext) {
 
     await context.scheduler.runJob({
         name: CLEANUP_JOB,
-        runAt: nextDate,
+        runAt: nextDate < new Date() ? new Date() : nextDate,
     });
 
     console.log(`Cleanup Scheduler: Next ad-hoc job at ${nextDate.toUTCString()}`);
