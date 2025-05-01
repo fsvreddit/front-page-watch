@@ -13,7 +13,7 @@ interface OrderedPost {
 }
 
 async function isSubredditNSFW (subredditName: string, context: JobContext) {
-    const redisKey = `subNSFW:${subredditName}`;
+    const redisKey = `subIsNSFW:${subredditName}`;
     const isNSFW = await context.redis.get(redisKey);
     if (isNSFW) {
         return JSON.parse(isNSFW) as boolean;
@@ -22,13 +22,13 @@ async function isSubredditNSFW (subredditName: string, context: JobContext) {
     let subredditInfo: SubredditInfo | undefined;
     try {
         subredditInfo = await context.reddit.getSubredditInfoByName(subredditName);
+        const subNSFW = subredditInfo.isNsfw ?? true;
+        await context.redis.set(redisKey, JSON.stringify(subNSFW), { expiration: addWeeks(new Date(), 1) });
+        return subNSFW;
     } catch {
-        //
+        console.log(`Error retrieving subreddit info for ${subredditName}, assuming NSFW by default`);
+        return true; // Default to true if we can't get the subreddit info
     }
-
-    const subNSFW = subredditInfo?.isNsfw ?? true;
-    await context.redis.set(redisKey, JSON.stringify(subNSFW), { expiration: addWeeks(new Date(), 1) });
-    return subNSFW;
 }
 
 export async function getPostsFromAll (_: unknown, context: JobContext) {

@@ -1,5 +1,5 @@
 import { JobContext, Post, TriggerContext } from "@devvit/public-api";
-import { parseExpression } from "cron-parser";
+import { CronExpressionParser } from "cron-parser";
 import { addDays, addMinutes, differenceInMinutes } from "date-fns";
 import { CLEANUP_JOB, CLEANUP_JOB_CRON } from "./constants.js";
 import pluralize from "pluralize";
@@ -56,7 +56,7 @@ export async function scheduleAdhocCleanup (context: TriggerContext) {
     }
 
     const nextDate = addMinutes(new Date(nextEntries[0].score), 5);
-    const nextScheduledDate = parseExpression(CLEANUP_JOB_CRON).next().toDate();
+    const nextScheduledDate = CronExpressionParser.parse(CLEANUP_JOB_CRON).next().toDate();
 
     if (differenceInMinutes(nextScheduledDate, nextDate) < 2) {
         console.log("Cleanup Scheduler: Next due date is too close to next scheduled date.");

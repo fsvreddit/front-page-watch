@@ -8,6 +8,10 @@ The code for this app is open source, and can be found on GitHub [here](https://
 
 ## Changes
 
+### v1.1.13
+
+* Ensure that Dev Platform issues can't result in subreddits being treated as NSFW persistently
+
 ### v1.1.12
 
 * Fix issue preventing cleanup from working correctly
