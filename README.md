@@ -8,6 +8,10 @@ The code for this app is open source, and can be found on GitHub [here](https://
 
 ## Changes
 
+### v1.1.15
+
+* Update Devvit and dependencies
+
 ### v1.1.14
 
 * Update Devvit and dependencies
