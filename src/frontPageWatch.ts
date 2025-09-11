@@ -3,9 +3,11 @@ import { getSettings } from "./settings.js";
 import pluralize from "pluralize";
 import { addDays, addMinutes, addWeeks } from "date-fns";
 import { setCleanupForPost } from "./cleanup.js";
+import { fromPairs } from "lodash";
 
 const POSTS_IN_ALL_KEY = "postsInAll";
 const POST_QUEUE_KEY = "postQueueKey";
+const POST_TITLES_KEY = "postTitlesKey";
 
 interface OrderedPost {
     post: Post;
@@ -56,6 +58,8 @@ export async function getPostsFromAll (_: unknown, context: JobContext) {
         .filter(item => !postsInAll.some(post => post.post.id === item.member))
         .map(item => item.member);
 
+    await context.redis.hDel(POST_TITLES_KEY, existingRecordsToRemove);
+
     if (existingRecordsToRemove.length > 0) {
         await context.redis.zRem(POSTS_IN_ALL_KEY, existingRecordsToRemove);
         await context.redis.zRem(POST_QUEUE_KEY, existingRecordsToRemove);
@@ -67,6 +71,12 @@ export async function getPostsFromAll (_: unknown, context: JobContext) {
     }
 
     await context.redis.zAdd(POSTS_IN_ALL_KEY, ...postsInAll.map(item => ({ member: item.post.id, score: item.index })));
+
+    const postTitles = postsInAll
+        .filter(item => !item.post.title.includes("Removed by moderator"))
+        .map(item => ([item.post.id, item.post.title]));
+
+    await context.redis.hSet(POST_TITLES_KEY, fromPairs(postTitles));
 
     if (verboseLogging) {
         console.log(`Populate: ${existingRecordsToRemove.length} queued, ${postsToAddToQueue.length} dequeued, ${postsInAll.length} recorded`);
@@ -158,13 +168,18 @@ async function createPost (post: Post, index: number, context: TriggerContext) {
         return;
     }
 
+    const postTitle = await context.redis.hGet(POST_TITLES_KEY, post.id);
+    if (postTitle) {
+        console.log(`Create: Using cached title for ${post.id}, current title is "${post.title}"`);
+    }
+
     const subredditName = context.subredditName ?? (await context.reddit.getCurrentSubreddit()).name;
 
     const newPostTitle = getNewPostTitle({
         index,
         upvotes: post.score,
         commentCount: post.numberOfComments,
-        postTitle: post.title,
+        postTitle: postTitle ?? post.title,
         subredditName: post.subredditName,
     });
 
