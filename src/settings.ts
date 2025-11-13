@@ -38,8 +38,8 @@ export const appSettings: SettingsFormField[] = [
     {
         type: "string",
         name: AppSetting.FeedToMonitor,
-        label: "Feed to monitor",
-        defaultValue: "all",
+        label: "Feed to monitor. Omit r/ e.g. enter 'all' or 'funny'",
+        defaultValue: "",
         onValidate: validateFieldAndRequeue,
     },
     {
@@ -80,11 +80,7 @@ export async function getSettings (context: JobContext) {
         return { minPosition: 1, maxPosition: 100, feedToMonitor: "all" };
     }
 
-    const feedToMonitor = settings[AppSetting.FeedToMonitor] as string | undefined;
-    if (!feedToMonitor) {
-        console.log("No feed!");
-        return { minPosition: 1, maxPosition: 100, feedToMonitor: "all" };
-    }
+    const feedToMonitor = settings[AppSetting.FeedToMonitor] as string | undefined ?? "";
 
     const verboseLogging = settings[AppSetting.VerboseLogging] as boolean | undefined ?? false;
 

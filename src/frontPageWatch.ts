@@ -36,6 +36,11 @@ async function isSubredditNSFW (subredditName: string, context: JobContext) {
 export async function getPostsFromAll (_: unknown, context: JobContext) {
     const { minPosition, maxPosition, feedToMonitor, verboseLogging } = await getSettings(context);
 
+    if (!feedToMonitor) {
+        console.warn("Populate: No feed to monitor set, skipping");
+        return;
+    }
+
     const postsInAllResult = await context.reddit.getHotPosts({
         subredditName: feedToMonitor,
         limit: maxPosition,
