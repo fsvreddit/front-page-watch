@@ -5,12 +5,14 @@
   "license": "BSD-3-Clause",
   "type": "module",
   "scripts": {
+    "deploy": "devvit publish && devvit install undelete && devvit install longtail",
+    "logs": "devvit logs undelete --verbose --since 5m",
     "test": "npm run test:unit",
     "test:unit": "vitest --run"
   },
   "dependencies": {
-    "@devvit/protos": "0.12.6",
-    "@devvit/public-api": "0.12.6",
+    "@devvit/protos": "0.12.17",
+    "@devvit/public-api": "0.12.17",
     "cron-parser": "^5.1.1",
     "date-fns": "^4.1.0",
     "lodash": "^4.17.21",
@@ -20,7 +22,7 @@
     "@fsvreddit/eslint-config": "github:fsvreddit/eslint-config",
     "@types/lodash": "^4.17.20",
     "@types/pluralize": "^0.0.33",
-    "eslint": "^9.10.0",
+    "eslint": "^10.0.0",
     "typescript": "5.8.3",
     "vitest": "^4.0.8"
   }
