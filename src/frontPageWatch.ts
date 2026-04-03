@@ -63,9 +63,8 @@ export async function getPostsFromAll (_: unknown, context: JobContext) {
         .filter(item => !postsInAll.some(post => post.post.id === item.member))
         .map(item => item.member);
 
-    await context.redis.hDel(POST_TITLES_KEY, existingRecordsToRemove);
-
     if (existingRecordsToRemove.length > 0) {
+        await context.redis.hDel(POST_TITLES_KEY, existingRecordsToRemove);
         await context.redis.zRem(POSTS_IN_ALL_KEY, existingRecordsToRemove);
         await context.redis.zRem(POST_QUEUE_KEY, existingRecordsToRemove);
     }
