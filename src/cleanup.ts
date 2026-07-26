@@ -1,9 +1,11 @@
-import { JobContext, Post, TriggerContext } from "@devvit/public-api";
+import { JobContext, Post, ScheduledJobEvent, TriggerContext } from "@devvit/public-api";
 import { CronExpressionParser } from "cron-parser";
 import { addDays, addMinutes, differenceInMinutes } from "date-fns";
-import { CLEANUP_JOB, CLEANUP_JOB_CRON } from "./constants.js";
+import { SchedulerJob, SchedulerCron } from "./constants.js";
 import pluralize from "pluralize";
 import { getSettings } from "./settings.js";
+import { JobData } from "./types.js";
+import { hasTriggerBeenHandled } from "@fsvreddit/fsv-devvit-helpers";
 
 const CLEANUP_KEY = "cleanupLog";
 const CLEANUP_INTERVAL = 28;
@@ -13,7 +15,13 @@ export async function setCleanupForPost (localPostId: string, remotePostId: stri
     await context.redis.zAdd(CLEANUP_KEY, { member: `${localPostId}:${remotePostId}`, score: cleanupDate.getTime() });
 }
 
-export async function handleCleanupJob (_: unknown, context: JobContext) {
+export async function handleCleanupJob (event: ScheduledJobEvent<JobData | undefined>, context: JobContext) {
+    const jobGuid = event.data?.jobGuid;
+    if (jobGuid && await hasTriggerBeenHandled(context.redis, `job:${jobGuid}`, { expiration: addMinutes(new Date(), 5) })) {
+        console.warn(`Cleanup: Job ${jobGuid} has already been handled, skipping`);
+        return;
+    }
+
     const itemsToCheck = await context.redis.zRange(CLEANUP_KEY, 0, new Date().getTime(), { by: "score" });
 
     if (itemsToCheck.length > 0) {
@@ -56,7 +64,7 @@ export async function scheduleAdhocCleanup (context: TriggerContext) {
     }
 
     const nextDate = addMinutes(new Date(nextEntries[0].score), 5);
-    const nextScheduledDate = CronExpressionParser.parse(CLEANUP_JOB_CRON).next().toDate();
+    const nextScheduledDate = CronExpressionParser.parse(SchedulerCron.Cleanup).next().toDate();
 
     if (differenceInMinutes(nextScheduledDate, nextDate) < 2) {
         console.log("Cleanup Scheduler: Next due date is too close to next scheduled date.");
@@ -64,8 +72,9 @@ export async function scheduleAdhocCleanup (context: TriggerContext) {
     }
 
     await context.scheduler.runJob({
-        name: CLEANUP_JOB,
+        name: SchedulerJob.Cleanup,
         runAt: nextDate < new Date() ? new Date() : nextDate,
+        data: { jobGuid: crypto.randomUUID() },
     });
 
     console.log(`Cleanup Scheduler: Next ad-hoc job at ${nextDate.toUTCString()}`);

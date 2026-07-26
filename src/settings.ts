@@ -1,5 +1,5 @@
 import { JobContext, SettingsFormField, SettingsFormFieldValidatorEvent, TriggerContext } from "@devvit/public-api";
-import { GET_ALL_JOB } from "./constants.js";
+import { SchedulerJob } from "./constants.js";
 
 export enum AppSetting {
     FeedToMonitor = "feedToMonitor",
@@ -23,8 +23,9 @@ async function validateFieldAndRequeue (event: SettingsFormFieldValidatorEvent<s
     }
 
     await context.scheduler.runJob({
-        name: GET_ALL_JOB,
+        name: SchedulerJob.GetAll,
         runAt: new Date(),
+        data: { jobGuid: crypto.randomUUID() },
     });
 }
 

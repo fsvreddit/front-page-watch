@@ -1,6 +1,6 @@
 import { TriggerContext } from "@devvit/public-api";
 import { AppInstall, AppUpgrade } from "@devvit/protos";
-import { CHECK_POSTS_CRON, CHECK_POSTS_JOB, CLEANUP_JOB, CLEANUP_JOB_CRON, GET_ALL_CRON, GET_ALL_JOB } from "./constants.js";
+import { SchedulerCron, SchedulerJob } from "./constants.js";
 import { oneOffCleanupReschedule, scheduleAdhocCleanup } from "./cleanup.js";
 
 export async function handleUpgradeEvents (_: AppInstall | AppUpgrade, context: TriggerContext) {
@@ -8,23 +8,23 @@ export async function handleUpgradeEvents (_: AppInstall | AppUpgrade, context: 
     await Promise.all(existingJobs.map(job => context.scheduler.cancelJob(job.id)));
 
     await context.scheduler.runJob({
-        name: GET_ALL_JOB,
-        cron: GET_ALL_CRON,
+        name: SchedulerJob.GetAll,
+        cron: SchedulerCron.GetAll,
     });
 
     await context.scheduler.runJob({
-        name: GET_ALL_JOB,
+        name: SchedulerJob.GetAll,
         runAt: new Date(),
     });
 
     await context.scheduler.runJob({
-        name: CHECK_POSTS_JOB,
-        cron: CHECK_POSTS_CRON,
+        name: SchedulerJob.CheckPosts,
+        cron: SchedulerCron.CheckPosts,
     });
 
     await context.scheduler.runJob({
-        name: CLEANUP_JOB,
-        cron: CLEANUP_JOB_CRON,
+        name: SchedulerJob.Cleanup,
+        cron: SchedulerCron.Cleanup,
     });
 
     await oneOffCleanupReschedule(context);

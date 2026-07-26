@@ -1,9 +1,11 @@
-import { JobContext, Post, SubredditInfo, TriggerContext, ZMember } from "@devvit/public-api";
+import { JobContext, Post, ScheduledJobEvent, SubredditInfo, TriggerContext, ZMember } from "@devvit/public-api";
 import { getSettings } from "./settings.js";
 import pluralize from "pluralize";
 import { addDays, addMinutes, addWeeks } from "date-fns";
 import { setCleanupForPost } from "./cleanup.js";
 import { fromPairs } from "lodash";
+import { JobData } from "./types.js";
+import { hasTriggerBeenHandled } from "@fsvreddit/fsv-devvit-helpers";
 
 const POSTS_IN_ALL_KEY = "postsInAll";
 const POST_QUEUE_KEY = "postQueueKey";
@@ -33,7 +35,13 @@ async function isSubredditNSFW (subredditName: string, context: JobContext) {
     }
 }
 
-export async function getPostsFromAll (_: unknown, context: JobContext) {
+export async function getPostsFromAll (event: ScheduledJobEvent<JobData | undefined>, context: JobContext) {
+    const jobGuid = event.data?.jobGuid;
+    if (jobGuid && await hasTriggerBeenHandled(context.redis, `job:${jobGuid}`, { expiration: addMinutes(new Date(), 5) })) {
+        console.warn(`Populate: Job ${jobGuid} has already been handled, skipping`);
+        return;
+    }
+
     const { minPosition, maxPosition, feedToMonitor, verboseLogging } = await getSettings(context);
 
     if (!feedToMonitor) {
