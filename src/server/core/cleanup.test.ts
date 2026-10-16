@@ -1,3 +1,23 @@
+import { vi } from "vitest";
+
+vi.hoisted(() => {
+    // @ts-expect-error config stub for tests
+    globalThis.devvit = { config: {} };
+});
+
+vi.mock("@devvit/web/server", () => ({
+    context: {
+        subredditId: "t5_test",
+        subredditName: "Test",
+    },
+    redis: {},
+}));
+
+vi.mock("@fsvreddit/fsv-devvit-web-helpers", () => ({
+    getExtendedDevvit: vi.fn(),
+    hasTriggerBeenHandled: vi.fn(),
+}));
+
 import { getRemotePostId } from "./cleanup.js";
 
 test("Original broken URL format", () => {

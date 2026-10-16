@@ -1,11 +1,11 @@
-import { JobContext, Post, ScheduledJobEvent, SubredditInfo, TriggerContext, ZMember } from "@devvit/public-api";
-import { getSettings } from "./settings.js";
+import { context, Post, reddit, redis, SubredditInfo, TaskRequest, ZMember } from "@devvit/web/server";
+import { T3 } from "@devvit/web/shared";
+import { getSettings, setCleanupForPost } from ".";
 import pluralize from "pluralize";
 import { addDays, addMinutes, addWeeks } from "date-fns";
-import { setCleanupForPost } from "./cleanup.js";
 import { fromPairs } from "lodash";
-import { JobData } from "./types.js";
-import { hasTriggerBeenHandled } from "@fsvreddit/fsv-devvit-helpers";
+import { hasTriggerBeenHandled } from "@fsvreddit/fsv-devvit-web-helpers";
+import { GetPostsFromAllJobData } from "../tasks";
 
 const POSTS_IN_ALL_KEY = "postsInAll";
 const POST_QUEUE_KEY = "postQueueKey";
@@ -16,18 +16,18 @@ interface OrderedPost {
     index: number;
 }
 
-async function isSubredditNSFW (subredditName: string, context: JobContext) {
+async function isSubredditNSFW (subredditName: string) {
     const redisKey = `subIsNSFW:${subredditName}`;
-    const isNSFW = await context.redis.get(redisKey);
+    const isNSFW = await redis.get(redisKey);
     if (isNSFW) {
         return JSON.parse(isNSFW) as boolean;
     }
 
     let subredditInfo: SubredditInfo | undefined;
     try {
-        subredditInfo = await context.reddit.getSubredditInfoByName(subredditName);
+        subredditInfo = await reddit.getSubredditInfoByName(subredditName);
         const subNSFW = subredditInfo.isNsfw ?? true;
-        await context.redis.set(redisKey, JSON.stringify(subNSFW), { expiration: addWeeks(new Date(), 1) });
+        await redis.set(redisKey, JSON.stringify(subNSFW), { expiration: addWeeks(new Date(), 1) });
         return subNSFW;
     } catch {
         console.log(`Error retrieving subreddit info for ${subredditName}, assuming NSFW by default`);
@@ -35,21 +35,21 @@ async function isSubredditNSFW (subredditName: string, context: JobContext) {
     }
 }
 
-export async function getPostsFromAll (event: ScheduledJobEvent<JobData | undefined>, context: JobContext) {
+export async function getPostsFromAll (event: TaskRequest<GetPostsFromAllJobData | undefined>) {
     const jobGuid = event.data?.jobGuid;
-    if (jobGuid && await hasTriggerBeenHandled(context.redis, `job:${jobGuid}`, { expiration: addMinutes(new Date(), 5) })) {
+    if (jobGuid && await hasTriggerBeenHandled(`job:${jobGuid}`, { expiration: addMinutes(new Date(), 5) })) {
         console.warn(`Populate: Job ${jobGuid} has already been handled, skipping`);
         return;
     }
 
-    const { minPosition, maxPosition, feedToMonitor, verboseLogging } = await getSettings(context);
+    const { minPosition, maxPosition, feedToMonitor, verboseLogging } = await getSettings();
 
     if (!feedToMonitor) {
         console.warn("Populate: No feed to monitor set, skipping");
         return;
     }
 
-    const postsInAllResult = await context.reddit.getHotPosts({
+    const postsInAllResult = await reddit.getHotPosts({
         subredditName: feedToMonitor,
         limit: maxPosition,
     }).all();
@@ -65,44 +65,44 @@ export async function getPostsFromAll (event: ScheduledJobEvent<JobData | undefi
         index++;
     }
 
-    const existingRecords = await context.redis.zRange(POSTS_IN_ALL_KEY, 0, -1);
+    const existingRecords = await redis.zRange(POSTS_IN_ALL_KEY, 0, -1);
 
     const existingRecordsToRemove = existingRecords
         .filter(item => !postsInAll.some(post => post.post.id === item.member))
         .map(item => item.member);
 
     if (existingRecordsToRemove.length > 0) {
-        await context.redis.hDel(POST_TITLES_KEY, existingRecordsToRemove);
-        await context.redis.zRem(POSTS_IN_ALL_KEY, existingRecordsToRemove);
-        await context.redis.zRem(POST_QUEUE_KEY, existingRecordsToRemove);
+        await redis.hDel(POST_TITLES_KEY, existingRecordsToRemove);
+        await redis.zRem(POSTS_IN_ALL_KEY, existingRecordsToRemove);
+        await redis.zRem(POST_QUEUE_KEY, existingRecordsToRemove);
     }
 
     const postsToAddToQueue = postsInAll.filter(post => !existingRecords.some(item => item.member === post.post.id));
     if (postsToAddToQueue.length > 0) {
-        await context.redis.zAdd(POST_QUEUE_KEY, ...postsToAddToQueue.map(post => ({ member: post.post.id, score: new Date().getTime() })));
+        await redis.zAdd(POST_QUEUE_KEY, ...postsToAddToQueue.map(post => ({ member: post.post.id, score: new Date().getTime() })));
     }
 
-    await context.redis.zAdd(POSTS_IN_ALL_KEY, ...postsInAll.map(item => ({ member: item.post.id, score: item.index })));
+    await redis.zAdd(POSTS_IN_ALL_KEY, ...postsInAll.map(item => ({ member: item.post.id, score: item.index })));
 
     const postTitles = postsInAll
         .filter(item => !item.post.title.includes("Removed by moderator"))
         .map(item => ([item.post.id, item.post.title]));
 
-    await context.redis.hSet(POST_TITLES_KEY, fromPairs(postTitles));
+    await redis.hSet(POST_TITLES_KEY, fromPairs(postTitles));
 
     if (verboseLogging) {
         console.log(`Populate: ${existingRecordsToRemove.length} queued, ${postsToAddToQueue.length} dequeued, ${postsInAll.length} recorded`);
     }
 }
 
-export async function checkPosts (_: unknown, context: JobContext) {
-    const { minPosition, maxPosition, verboseLogging } = await getSettings(context);
+export async function checkPosts () {
+    const { minPosition, maxPosition, verboseLogging } = await getSettings();
     let itemsToCheck = Math.round((maxPosition - minPosition) / 18);
     if (itemsToCheck < 10) {
         itemsToCheck = 10;
     }
 
-    const postsToCheck = await context.redis.zRange(POST_QUEUE_KEY, 0, itemsToCheck - 1, { by: "rank" });
+    const postsToCheck = await redis.zRange(POST_QUEUE_KEY, 0, itemsToCheck - 1, { by: "rank" });
     if (postsToCheck.length === 0) {
         console.log("Check: No posts to check yet.");
         return;
@@ -112,13 +112,13 @@ export async function checkPosts (_: unknown, context: JobContext) {
     for (const item of postsToCheck) {
         let post: Post | undefined;
         try {
-            post = await context.reddit.getPostById(item.member);
+            post = await reddit.getPostById(item.member as T3);
         } catch (error) {
             if (verboseLogging) {
                 console.log(`Error retrieving post ${item.member}`);
                 console.log(error);
             }
-            await context.redis.zRem(POST_QUEUE_KEY, [item.member]);
+            await redis.zRem(POST_QUEUE_KEY, [item.member]);
             continue;
         }
 
@@ -127,16 +127,16 @@ export async function checkPosts (_: unknown, context: JobContext) {
             continue;
         }
 
-        const score = await context.redis.zScore(POSTS_IN_ALL_KEY, item.member);
+        const score = await redis.zScore(POSTS_IN_ALL_KEY, item.member);
         if (score) {
-            await createPost(post, score, context);
+            await createPost(post, score);
         }
 
-        await context.redis.zRem(POST_QUEUE_KEY, [item.member]);
+        await redis.zRem(POST_QUEUE_KEY, [item.member]);
     }
 
     if (itemsToRequeue.length > 0) {
-        await context.redis.zAdd(POST_QUEUE_KEY, ...itemsToRequeue);
+        await redis.zAdd(POST_QUEUE_KEY, ...itemsToRequeue);
         if (verboseLogging) {
             console.log(`Check: Queued ${itemsToRequeue.length} ${pluralize("post", itemsToRequeue.length)} out of ${postsToCheck.length} for future checking.`);
         }
@@ -167,25 +167,25 @@ export function getNewPostTitle (data: PostTitleInfo): string {
     return newPostTitle;
 }
 
-async function createPost (post: Post, index: number, context: TriggerContext) {
-    const isNSFW = await isSubredditNSFW(post.subredditName, context);
+async function createPost (post: Post, index: number) {
+    const isNSFW = await isSubredditNSFW(post.subredditName);
     if (isNSFW) {
         console.log(`Create: Post for ${post.id} not made because ${post.subredditName} is NSFW`);
         return;
     }
 
     const redisKey = `postMade:${post.id}`;
-    const alreadyDone = await context.redis.get(redisKey);
+    const alreadyDone = await redis.get(redisKey);
     if (alreadyDone) {
         return;
     }
 
-    const postTitle = await context.redis.hGet(POST_TITLES_KEY, post.id);
+    const postTitle = await redis.hGet(POST_TITLES_KEY, post.id);
     if (postTitle) {
         console.log(`Create: Using cached title for ${post.id}, current title is "${post.title}"`);
     }
 
-    const subredditName = context.subredditName ?? (await context.reddit.getCurrentSubreddit()).name;
+    const subredditName = context.subredditName;
 
     const newPostTitle = getNewPostTitle({
         index,
@@ -195,15 +195,15 @@ async function createPost (post: Post, index: number, context: TriggerContext) {
         subredditName: post.subredditName,
     });
 
-    const newPost = await context.reddit.submitPost({
+    const newPost = await reddit.submitPost({
         subredditName,
         url: `https://www.reddit.com${post.permalink}`,
         title: newPostTitle,
     });
 
-    await setCleanupForPost(newPost.id, post.id, context, addDays(new Date(), 1));
+    await setCleanupForPost(newPost.id, post.id, addDays(new Date(), 1));
 
     console.log(`Create: New post for ${post.id}: https://redd.it/${newPost.id.slice(3)}`);
 
-    await context.redis.set(redisKey, new Date().getTime().toString(), { expiration: addWeeks(new Date(), 2) });
+    await redis.set(redisKey, new Date().getTime().toString(), { expiration: addWeeks(new Date(), 2) });
 }

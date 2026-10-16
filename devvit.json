@@ -1,11 +1,59 @@
 {
     "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
     "name": "front-page-watch",
-    "blocks": {
-        "entry": "src/main.ts",
-        "triggers": [
-            "onAppInstall",
-            "onAppUpgrade"
-        ]
+    "permissions": {
+        "reddit": true
+    },
+    "scripts": {
+        "build": "vite build",
+        "dev": "vite build --watch"
+    },
+    "server": {
+        "dir": "dist/server",
+        "entry": "index.cjs"
+    },
+    "settings": {
+        "subreddit": {
+            "feedToMonitor": {
+                "type": "string",
+                "label": "Feed to monitor. Omit r/ e.g. enter 'all' or 'funny'",
+                "defaultValue": "",
+                "validationEndpoint": "/internal/validators/validate-feed"
+            },
+            "minPosition": {
+                "type": "number",
+                "label": "Start position on feed to monitor. Must be lower than end position",
+                "defaultValue": 1,
+                "validationEndpoint": "/internal/validators/validate-position"
+            },
+            "maxPosition": {
+                "type": "number",
+                "label": "End position on feed to monitor. Must be higher than start position",
+                "defaultValue": 100,
+                "validationEndpoint": "/internal/validators/validate-position"
+            },
+            "verboseLogging": {
+                "type": "boolean",
+                "label": "Enable verbose logging",
+                "defaultValue": false
+            }
+        }
+    },
+    "triggers": {
+        "onAppInstall": "/internal/triggers/app-install",
+        "onAppUpgrade": "/internal/triggers/app-upgrade"
+    },
+    "scheduler": {
+        "tasks": {
+            "getAllJob": {
+                "endpoint": "/internal/tasks/get-all"
+            },
+            "checkPostsJob": {
+                "endpoint": "/internal/tasks/check-posts"
+            },
+            "cleanupJob": {
+                "endpoint": "/internal/tasks/cleanup"
+            }
+        }
     }
 }

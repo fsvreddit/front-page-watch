@@ -8,6 +8,10 @@ The code for this app is open source, and can be found on GitHub [here](https://
 
 ## Changes
 
+### v1.2.1
+
+* Devvit Web migration
+
 ### v1.1.16
 
 * Cache post titles and use cached value to prevent issues with posts showing as "Removed by moderator"
